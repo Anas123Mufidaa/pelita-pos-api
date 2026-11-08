@@ -1,4 +1,15 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
+
+from database import initialize_database
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    await initialize_database()
+    yield
 
 
 tags_metadata = [
@@ -21,6 +32,7 @@ app = FastAPI(
     description="Backend POS untuk Cashier App dan Dashboard",
     version="0.1.0",
     openapi_tags=tags_metadata,
+    lifespan=lifespan,
 )
 
 
