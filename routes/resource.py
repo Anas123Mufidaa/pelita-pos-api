@@ -1,14 +1,24 @@
+import sqlite3
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path as PathParameter, Query, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Path as PathParameter,
+    Query,
+    Request,
+    Response,
+    status,
+)
 
-from database import fetch_product, fetch_products, get_database_path
+from database import fetch_product, fetch_products, get_database_path, insert_product
 from exceptions import AppException
 from models import (
     ErrorCode,
     ErrorResponse,
     PaginationMeta,
+    ProductCreate,
     ProductRead,
     SuccessResponse,
 )
@@ -21,6 +31,46 @@ COMMON_ERROR_RESPONSES = {
     422: {"model": ErrorResponse, "description": "Validation error"},
     500: {"model": ErrorResponse, "description": "Internal server error"},
 }
+
+
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SuccessResponse[ProductRead],
+    response_model_exclude_none=True,
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponse,
+            "description": "SKU already exists",
+        },
+        **COMMON_ERROR_RESPONSES,
+    },
+    summary="Create a product",
+)
+async def create_product(
+    request: Request,
+    response: Response,
+    product: ProductCreate,
+    database_path: Annotated[Path, Depends(get_database_path)],
+) -> SuccessResponse[ProductRead]:
+    try:
+        row = await insert_product(product, database_path=database_path)
+    except sqlite3.IntegrityError as exception:
+        if "products.sku" in str(exception):
+            raise AppException(
+                status_code=status.HTTP_409_CONFLICT,
+                code=ErrorCode.DUPLICATE_RESOURCE,
+                message="Product SKU already exists",
+            ) from exception
+        raise
+
+    created = ProductRead(**dict(row))
+    response.headers["Location"] = f"/resource/{created.id}"
+    return SuccessResponse(
+        message="Product created successfully",
+        data=created,
+        meta=build_response_meta(request),
+    )
 
 
 @router.get(

@@ -61,3 +61,56 @@ async def test_get_product_returns_product_or_not_found(tmp_path) -> None:
     assert found.json()["data"]["sku"] == "KOPI-001"
     assert missing.status_code == 404
     assert missing.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_create_product_persists_product(tmp_path) -> None:
+    payload = {
+        "sku": "JUS-001",
+        "nama": "Jus Jeruk",
+        "kategori": "Minuman",
+        "harga": 16000,
+        "stok": 15,
+    }
+    async with resource_client(tmp_path) as client:
+        created = await client.post("/resource", json=payload)
+        product_id = created.json()["data"]["id"]
+        persisted = await client.get(f"/resource/{product_id}")
+
+    assert created.status_code == 201
+    assert created.headers["Location"] == f"/resource/{product_id}"
+    assert created.json()["data"]["sku"] == "JUS-001"
+    assert persisted.status_code == 200
+    assert persisted.json()["data"] == created.json()["data"]
+
+
+@pytest.mark.asyncio
+async def test_create_product_rejects_duplicate_sku(tmp_path) -> None:
+    payload = {
+        "sku": "KOPI-001",
+        "nama": "Produk Duplikat",
+        "kategori": "Minuman",
+        "harga": 10000,
+        "stok": 1,
+    }
+    async with resource_client(tmp_path) as client:
+        response = await client.post("/resource", json=payload)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "DUPLICATE_RESOURCE"
+
+
+@pytest.mark.asyncio
+async def test_create_product_rejects_invalid_payload(tmp_path) -> None:
+    payload = {
+        "sku": "JUS-001",
+        "nama": "Jus Jeruk",
+        "kategori": "Minuman",
+        "harga": -1,
+        "stok": 15,
+    }
+    async with resource_client(tmp_path) as client:
+        response = await client.post("/resource", json=payload)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"

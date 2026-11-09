@@ -5,6 +5,8 @@ from pathlib import Path
 
 import aiosqlite
 
+from models import ProductCreate
+
 
 DATABASE_PATH = Path(os.getenv("PELITA_DATABASE_PATH", "pelita_pos.db"))
 
@@ -76,3 +78,31 @@ async def fetch_product(
             (product_id,),
         )
         return await cursor.fetchone()
+
+
+async def insert_product(
+    product: ProductCreate,
+    *,
+    database_path: str | Path = DATABASE_PATH,
+) -> aiosqlite.Row:
+    async with connect_database(database_path) as connection:
+        cursor = await connection.execute(
+            """
+            INSERT INTO products (sku, nama, kategori, harga, stok)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (product.sku, product.nama, product.kategori, product.harga, product.stok),
+        )
+        await connection.commit()
+        created_cursor = await connection.execute(
+            """
+            SELECT id, sku, nama, kategori, harga, stok
+            FROM products
+            WHERE id = ?
+            """,
+            (cursor.lastrowid,),
+        )
+        row = await created_cursor.fetchone()
+        if row is None:
+            raise RuntimeError("Created product could not be loaded")
+        return row
