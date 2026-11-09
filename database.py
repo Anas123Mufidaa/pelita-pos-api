@@ -34,3 +34,45 @@ async def initialize_database(database_path: str | Path = DATABASE_PATH) -> None
     async with connect_database(database_path) as connection:
         await connection.execute(CREATE_PRODUCTS_TABLE)
         await connection.commit()
+
+
+def get_database_path() -> Path:
+    return DATABASE_PATH
+
+
+async def fetch_products(
+    *,
+    skip: int,
+    limit: int,
+    database_path: str | Path = DATABASE_PATH,
+) -> tuple[list[aiosqlite.Row], int]:
+    async with connect_database(database_path) as connection:
+        count_cursor = await connection.execute("SELECT COUNT(*) FROM products")
+        total = (await count_cursor.fetchone())[0]
+        cursor = await connection.execute(
+            """
+            SELECT id, sku, nama, kategori, harga, stok
+            FROM products
+            ORDER BY id
+            LIMIT ? OFFSET ?
+            """,
+            (limit, skip),
+        )
+        return await cursor.fetchall(), total
+
+
+async def fetch_product(
+    product_id: int,
+    *,
+    database_path: str | Path = DATABASE_PATH,
+) -> aiosqlite.Row | None:
+    async with connect_database(database_path) as connection:
+        cursor = await connection.execute(
+            """
+            SELECT id, sku, nama, kategori, harga, stok
+            FROM products
+            WHERE id = ?
+            """,
+            (product_id,),
+        )
+        return await cursor.fetchone()

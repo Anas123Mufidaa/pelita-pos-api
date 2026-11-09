@@ -7,6 +7,7 @@ from database import initialize_database
 from exceptions import configure_error_handling
 from models import ErrorResponse, SuccessResponse
 from responses import build_response_meta
+from routes.resource import router as resource_router
 
 
 @asynccontextmanager
@@ -38,6 +39,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 configure_error_handling(app)
+app.include_router(resource_router)
 
 
 @app.get(
