@@ -2,7 +2,29 @@ from datetime import datetime
 from enum import Enum
 from typing import Generic, Literal, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ProductBase(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    sku: str = Field(min_length=1, max_length=50)
+    nama: str = Field(min_length=1, max_length=100)
+    kategori: str = Field(min_length=1, max_length=100)
+    harga: int = Field(ge=0)
+    stok: int = Field(ge=0)
+
+
+class ProductCreate(ProductBase):
+    pass
+
+
+class ProductUpdate(ProductBase):
+    pass
+
+
+class ProductRead(ProductBase):
+    id: int = Field(gt=0)
 
 
 class ErrorCode(str, Enum):
