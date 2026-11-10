@@ -5,7 +5,7 @@ from pathlib import Path
 
 import aiosqlite
 
-from models import ProductCreate
+from models import ProductCreate, ProductUpdate
 
 
 DATABASE_PATH = Path(os.getenv("PELITA_DATABASE_PATH", "pelita_pos.db"))
@@ -106,3 +106,61 @@ async def insert_product(
         if row is None:
             raise RuntimeError("Created product could not be loaded")
         return row
+
+
+async def update_product(
+    product_id: int,
+    product: ProductUpdate,
+    *,
+    database_path: str | Path = DATABASE_PATH,
+) -> aiosqlite.Row | None:
+    async with connect_database(database_path) as connection:
+        cursor = await connection.execute(
+            """
+            UPDATE products
+            SET sku = ?, nama = ?, kategori = ?, harga = ?, stok = ?
+            WHERE id = ?
+            """,
+            (
+                product.sku,
+                product.nama,
+                product.kategori,
+                product.harga,
+                product.stok,
+                product_id,
+            ),
+        )
+        if cursor.rowcount == 0:
+            return None
+        await connection.commit()
+        updated_cursor = await connection.execute(
+            """
+            SELECT id, sku, nama, kategori, harga, stok
+            FROM products
+            WHERE id = ?
+            """,
+            (product_id,),
+        )
+        return await updated_cursor.fetchone()
+
+
+async def delete_product(
+    product_id: int,
+    *,
+    database_path: str | Path = DATABASE_PATH,
+) -> aiosqlite.Row | None:
+    async with connect_database(database_path) as connection:
+        cursor = await connection.execute(
+            """
+            SELECT id, sku, nama, kategori, harga, stok
+            FROM products
+            WHERE id = ?
+            """,
+            (product_id,),
+        )
+        product = await cursor.fetchone()
+        if product is None:
+            return None
+        await connection.execute("DELETE FROM products WHERE id = ?", (product_id,))
+        await connection.commit()
+        return product

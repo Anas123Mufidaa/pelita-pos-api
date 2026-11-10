@@ -1,6 +1,6 @@
 import sqlite3
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 from fastapi import (
     APIRouter,
@@ -12,7 +12,14 @@ from fastapi import (
     status,
 )
 
-from database import fetch_product, fetch_products, get_database_path, insert_product
+from database import (
+    delete_product as delete_product_record,
+    fetch_product,
+    fetch_products,
+    get_database_path,
+    insert_product,
+    update_product as update_product_record,
+)
 from exceptions import AppException
 from models import (
     ErrorCode,
@@ -20,6 +27,7 @@ from models import (
     PaginationMeta,
     ProductCreate,
     ProductRead,
+    ProductUpdate,
     SuccessResponse,
 )
 from responses import build_response_meta
@@ -31,6 +39,16 @@ COMMON_ERROR_RESPONSES = {
     422: {"model": ErrorResponse, "description": "Validation error"},
     500: {"model": ErrorResponse, "description": "Internal server error"},
 }
+
+
+def raise_product_integrity_error(exception: sqlite3.IntegrityError) -> NoReturn:
+    if "products.sku" in str(exception):
+        raise AppException(
+            status_code=status.HTTP_409_CONFLICT,
+            code=ErrorCode.DUPLICATE_RESOURCE,
+            message="Product SKU already exists",
+        ) from exception
+    raise exception
 
 
 @router.post(
@@ -56,13 +74,7 @@ async def create_product(
     try:
         row = await insert_product(product, database_path=database_path)
     except sqlite3.IntegrityError as exception:
-        if "products.sku" in str(exception):
-            raise AppException(
-                status_code=status.HTTP_409_CONFLICT,
-                code=ErrorCode.DUPLICATE_RESOURCE,
-                message="Product SKU already exists",
-            ) from exception
-        raise
+        raise_product_integrity_error(exception)
 
     created = ProductRead(**dict(row))
     response.headers["Location"] = f"/resource/{created.id}"
@@ -133,6 +145,85 @@ async def get_product(
 
     return SuccessResponse(
         message="Product retrieved successfully",
+        data=ProductRead(**dict(row)),
+        meta=build_response_meta(request),
+    )
+
+
+@router.put(
+    "/{product_id}",
+    response_model=SuccessResponse[ProductRead],
+    response_model_exclude_none=True,
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponse,
+            "description": "Product not found",
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponse,
+            "description": "SKU already exists",
+        },
+        **COMMON_ERROR_RESPONSES,
+    },
+    summary="Update a product",
+)
+async def update_product(
+    request: Request,
+    product: ProductUpdate,
+    database_path: Annotated[Path, Depends(get_database_path)],
+    product_id: Annotated[int, PathParameter(gt=0)],
+) -> SuccessResponse[ProductRead]:
+    try:
+        row = await update_product_record(
+            product_id,
+            product,
+            database_path=database_path,
+        )
+    except sqlite3.IntegrityError as exception:
+        raise_product_integrity_error(exception)
+
+    if row is None:
+        raise AppException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code=ErrorCode.PRODUCT_NOT_FOUND,
+            message="Product not found",
+        )
+
+    return SuccessResponse(
+        message="Product updated successfully",
+        data=ProductRead(**dict(row)),
+        meta=build_response_meta(request),
+    )
+
+
+@router.delete(
+    "/{product_id}",
+    response_model=SuccessResponse[ProductRead],
+    response_model_exclude_none=True,
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorResponse,
+            "description": "Product not found",
+        },
+        **COMMON_ERROR_RESPONSES,
+    },
+    summary="Delete a product permanently",
+)
+async def delete_product(
+    request: Request,
+    database_path: Annotated[Path, Depends(get_database_path)],
+    product_id: Annotated[int, PathParameter(gt=0)],
+) -> SuccessResponse[ProductRead]:
+    row = await delete_product_record(product_id, database_path=database_path)
+    if row is None:
+        raise AppException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code=ErrorCode.PRODUCT_NOT_FOUND,
+            message="Product not found",
+        )
+
+    return SuccessResponse(
+        message="Product deleted successfully",
         data=ProductRead(**dict(row)),
         meta=build_response_meta(request),
     )

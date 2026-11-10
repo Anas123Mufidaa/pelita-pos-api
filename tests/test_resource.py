@@ -114,3 +114,53 @@ async def test_create_product_rejects_invalid_payload(tmp_path) -> None:
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_update_product_replaces_product(tmp_path) -> None:
+    payload = {
+        "sku": "KOPI-001-NEW",
+        "nama": "Americano Double Shot",
+        "kategori": "Minuman",
+        "harga": 24000,
+        "stok": 12,
+    }
+    async with resource_client(tmp_path) as client:
+        updated = await client.put("/resource/1", json=payload)
+        persisted = await client.get("/resource/1")
+
+    assert updated.status_code == 200
+    assert updated.json()["data"] == {"id": 1, **payload}
+    assert persisted.json()["data"] == updated.json()["data"]
+
+
+@pytest.mark.asyncio
+async def test_update_product_handles_missing_and_duplicate_sku(tmp_path) -> None:
+    payload = {
+        "sku": "KOPI-002",
+        "nama": "Duplikat",
+        "kategori": "Minuman",
+        "harga": 10000,
+        "stok": 1,
+    }
+    async with resource_client(tmp_path) as client:
+        duplicate = await client.put("/resource/1", json=payload)
+        missing = await client.put("/resource/999", json={**payload, "sku": "NEW"})
+
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["code"] == "DUPLICATE_RESOURCE"
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_delete_product_hard_deletes_product(tmp_path) -> None:
+    async with resource_client(tmp_path) as client:
+        deleted = await client.delete("/resource/1")
+        after_delete = await client.get("/resource/1")
+        missing = await client.delete("/resource/999")
+
+    assert deleted.status_code == 200
+    assert deleted.json()["data"]["id"] == 1
+    assert after_delete.status_code == 404
+    assert missing.status_code == 404
