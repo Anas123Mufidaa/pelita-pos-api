@@ -1,3 +1,4 @@
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -5,7 +6,15 @@ from pathlib import Path
 
 import aiosqlite
 
-from models import ProductCreate, ProductUpdate
+from models import ProductCreate, ProductUpdate, TransactionCreate, TransactionStatus
+
+
+class ProductNotFoundError(Exception):
+    pass
+
+
+class InsufficientStockError(Exception):
+    pass
 
 
 DATABASE_PATH = Path(os.getenv("PELITA_DATABASE_PATH", "pelita_pos.db"))
@@ -178,3 +187,161 @@ async def delete_product(
         await connection.execute("DELETE FROM products WHERE id = ?", (product_id,))
         await connection.commit()
         return product
+
+
+async def _insert_transaction(
+    connection: aiosqlite.Connection,
+    transaction: TransactionCreate,
+    unit_price: int,
+) -> aiosqlite.Row:
+    cursor = await connection.execute(
+        """
+        INSERT INTO transactions (
+            product_id, quantity, unit_price, total_price, cashier_name, status
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            transaction.product_id,
+            transaction.quantity,
+            unit_price,
+            unit_price * transaction.quantity,
+            transaction.cashier_name,
+            TransactionStatus.PENDING.value,
+        ),
+    )
+    created_cursor = await connection.execute(
+        """
+        SELECT id, product_id, quantity, unit_price, total_price,
+               cashier_name, status, created_at
+        FROM transactions WHERE id = ?
+        """,
+        (cursor.lastrowid,),
+    )
+    row = await created_cursor.fetchone()
+    if row is None:
+        raise RuntimeError("Created transaction could not be loaded")
+    return row
+
+
+async def reserve_transaction(
+    transaction: TransactionCreate,
+    *,
+    database_path: str | Path = DATABASE_PATH,
+) -> aiosqlite.Row:
+    async with connect_database(database_path) as connection:
+        try:
+            await connection.execute("BEGIN IMMEDIATE")
+            cursor = await connection.execute(
+                "SELECT harga FROM products WHERE id = ?",
+                (transaction.product_id,),
+            )
+            product = await cursor.fetchone()
+            if product is None:
+                raise ProductNotFoundError
+
+            update = await connection.execute(
+                """
+                UPDATE products
+                SET stok = stok - ?
+                WHERE id = ? AND stok >= ?
+                """,
+                (
+                    transaction.quantity,
+                    transaction.product_id,
+                    transaction.quantity,
+                ),
+            )
+            if update.rowcount != 1:
+                raise InsufficientStockError
+
+            row = await _insert_transaction(connection, transaction, product["harga"])
+            await connection.commit()
+            return row
+        except Exception:
+            await connection.rollback()
+            raise
+
+
+async def reserve_transaction_unsafe(
+    transaction: TransactionCreate,
+    *,
+    database_path: str | Path = DATABASE_PATH,
+) -> aiosqlite.Row:
+    async with connect_database(database_path) as connection:
+        cursor = await connection.execute(
+            "SELECT harga, stok FROM products WHERE id = ?",
+            (transaction.product_id,),
+        )
+        product = await cursor.fetchone()
+        if product is None:
+            raise ProductNotFoundError
+
+        current_stock = product["stok"]
+        await asyncio.sleep(0.01)
+        if current_stock < transaction.quantity:
+            raise InsufficientStockError
+
+        await connection.execute(
+            "UPDATE products SET stok = ? WHERE id = ?",
+            (current_stock - transaction.quantity, transaction.product_id),
+        )
+        row = await _insert_transaction(connection, transaction, product["harga"])
+        await connection.commit()
+        return row
+
+
+async def update_transaction_status(
+    transaction_id: int,
+    transaction_status: TransactionStatus,
+    *,
+    database_path: str | Path = DATABASE_PATH,
+) -> None:
+    async with connect_database(database_path) as connection:
+        await connection.execute(
+            "UPDATE transactions SET status = ? WHERE id = ?",
+            (transaction_status.value, transaction_id),
+        )
+        await connection.commit()
+
+
+async def fetch_transaction(
+    transaction_id: int,
+    *,
+    database_path: str | Path = DATABASE_PATH,
+) -> aiosqlite.Row | None:
+    async with connect_database(database_path) as connection:
+        cursor = await connection.execute(
+            """
+            SELECT id, product_id, quantity, unit_price, total_price,
+                   cashier_name, status, created_at
+            FROM transactions WHERE id = ?
+            """,
+            (transaction_id,),
+        )
+        return await cursor.fetchone()
+
+
+async def fetch_transactions(
+    *,
+    transaction_status: TransactionStatus | None,
+    skip: int,
+    limit: int,
+    database_path: str | Path = DATABASE_PATH,
+) -> tuple[list[aiosqlite.Row], int]:
+    where = " WHERE status = ?" if transaction_status else ""
+    parameters = (transaction_status.value,) if transaction_status else ()
+    async with connect_database(database_path) as connection:
+        count_cursor = await connection.execute(
+            f"SELECT COUNT(*) FROM transactions{where}", parameters
+        )
+        total = (await count_cursor.fetchone())[0]
+        cursor = await connection.execute(
+            f"""
+            SELECT id, product_id, quantity, unit_price, total_price,
+                   cashier_name, status, created_at
+            FROM transactions{where}
+            ORDER BY id DESC LIMIT ? OFFSET ?
+            """,
+            (*parameters, limit, skip),
+        )
+        return await cursor.fetchall(), total

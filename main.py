@@ -8,6 +8,7 @@ from exceptions import configure_error_handling
 from models import ErrorResponse, SuccessResponse
 from responses import build_response_meta
 from routes.resource import router as resource_router
+from routes.transaction import router as transaction_router
 
 
 @asynccontextmanager
@@ -40,6 +41,7 @@ app = FastAPI(
 )
 configure_error_handling(app)
 app.include_router(resource_router)
+app.include_router(transaction_router)
 
 
 @app.get(
