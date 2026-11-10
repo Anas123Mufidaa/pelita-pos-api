@@ -27,6 +27,32 @@ class ProductRead(ProductBase):
     id: int = Field(gt=0)
 
 
+class TransactionStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class TransactionCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    product_id: int = Field(gt=0)
+    quantity: int = Field(gt=0)
+    cashier_name: str = Field(min_length=1, max_length=100)
+
+
+class TransactionRead(BaseModel):
+    id: int = Field(gt=0)
+    product_id: int = Field(gt=0)
+    quantity: int = Field(gt=0)
+    unit_price: int = Field(ge=0)
+    total_price: int = Field(ge=0)
+    cashier_name: str
+    status: TransactionStatus
+    created_at: str
+
+
 class ErrorCode(str, Enum):
     VALIDATION_ERROR = "VALIDATION_ERROR"
     INVALID_REQUEST = "INVALID_REQUEST"

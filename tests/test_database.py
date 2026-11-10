@@ -18,6 +18,21 @@ async def test_initialize_database_creates_products_table(tmp_path) -> None:
 
     assert columns == {"id", "sku", "nama", "kategori", "harga", "stok"}
 
+    async with connect_database(database_path) as connection:
+        cursor = await connection.execute("PRAGMA table_info(transactions)")
+        transaction_columns = {row[1] for row in await cursor.fetchall()}
+
+    assert transaction_columns == {
+        "id",
+        "product_id",
+        "quantity",
+        "unit_price",
+        "total_price",
+        "cashier_name",
+        "status",
+        "created_at",
+    }
+
 
 @pytest.mark.asyncio
 async def test_products_table_enforces_data_integrity(tmp_path) -> None:

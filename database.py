@@ -21,6 +21,19 @@ CREATE TABLE IF NOT EXISTS products (
 )
 """
 
+CREATE_TRANSACTIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    unit_price INTEGER NOT NULL CHECK (unit_price >= 0),
+    total_price INTEGER NOT NULL CHECK (total_price >= 0),
+    cashier_name TEXT NOT NULL CHECK (length(trim(cashier_name)) > 0),
+    status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
 
 @asynccontextmanager
 async def connect_database(
@@ -35,6 +48,7 @@ async def connect_database(
 async def initialize_database(database_path: str | Path = DATABASE_PATH) -> None:
     async with connect_database(database_path) as connection:
         await connection.execute(CREATE_PRODUCTS_TABLE)
+        await connection.execute(CREATE_TRANSACTIONS_TABLE)
         await connection.commit()
 
 
