@@ -6,6 +6,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from database import (
+    InsufficientStockError,
+    connect_database,
     fetch_product,
     fetch_transaction,
     get_database_path,
@@ -145,3 +147,25 @@ async def test_background_failure_marks_transaction_failed(
     failed = await fetch_transaction(row["id"], database_path=database_path)
 
     assert failed["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_atomic_reservation_is_safe_without_process_lock(tmp_path) -> None:
+    database_path = tmp_path / "test.db"
+    await seed_products(database_path)
+    transaction = TransactionCreate(product_id=1, quantity=1, cashier_name="Kasir")
+
+    async with connect_database(database_path) as connection:
+        await connection.execute("UPDATE products SET stok = 1 WHERE id = 1")
+        await connection.commit()
+
+    results = await asyncio.gather(
+        reserve_transaction(transaction, database_path=database_path),
+        reserve_transaction(transaction, database_path=database_path),
+        return_exceptions=True,
+    )
+    product = await fetch_product(1, database_path=database_path)
+
+    assert sum(not isinstance(result, Exception) for result in results) == 1
+    assert sum(isinstance(result, InsufficientStockError) for result in results) == 1
+    assert product["stok"] == 0
