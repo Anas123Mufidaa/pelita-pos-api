@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS transactions (
     unit_price INTEGER NOT NULL CHECK (unit_price >= 0),
     total_price INTEGER NOT NULL CHECK (total_price >= 0),
     cashier_name TEXT NOT NULL CHECK (length(trim(cashier_name)) > 0),
-    status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    status TEXT NOT NULL CHECK (
+        status IN ('pending', 'processing', 'completed', 'failed')
+    ),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )
 """

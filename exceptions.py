@@ -8,7 +8,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from models import ErrorBody, ErrorCode, ErrorDetail, ErrorResponse
 from responses import build_response_meta, request_context_middleware
 
-
 logger = logging.getLogger(__name__)
 
 

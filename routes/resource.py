@@ -5,19 +5,25 @@ from typing import Annotated, NoReturn
 from fastapi import (
     APIRouter,
     Depends,
-    Path as PathParameter,
     Query,
     Request,
     Response,
     status,
 )
+from fastapi import (
+    Path as PathParameter,
+)
 
 from database import (
     delete_product as delete_product_record,
+)
+from database import (
     fetch_product,
     fetch_products,
     get_database_path,
     insert_product,
+)
+from database import (
     update_product as update_product_record,
 )
 from exceptions import AppException
@@ -31,7 +37,6 @@ from models import (
     SuccessResponse,
 )
 from responses import build_response_meta
-
 
 router = APIRouter(prefix="/resource", tags=["Dashboard"])
 

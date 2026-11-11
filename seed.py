@@ -3,7 +3,6 @@ from pathlib import Path
 
 from database import DATABASE_PATH, connect_database, initialize_database
 
-
 PRODUCTS = [
     ("KOPI-001", "Americano", "Minuman", 18000, 50),
     ("KOPI-002", "Cappuccino", "Minuman", 22000, 40),
