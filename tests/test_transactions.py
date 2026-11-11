@@ -108,6 +108,27 @@ async def test_safe_concurrent_transactions_allow_only_one(
 
 
 @pytest.mark.asyncio
+async def test_unsafe_concurrent_transactions_reproduce_overselling(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("PELITA_UNSAFE_STOCK", "1")
+    async with transaction_client(tmp_path, monkeypatch) as (client, database_path):
+        product = (await client.get("/resource/1")).json()["data"]
+        product["stok"] = 1
+        product.pop("id")
+        await client.put("/resource/1", json=product)
+        payload = {"product_id": 1, "quantity": 1, "cashier_name": "Kasir"}
+        first, second = await asyncio.gather(
+            client.post("/transactions", json=payload),
+            client.post("/transactions", json=payload),
+        )
+        final_product = await fetch_product(1, database_path=database_path)
+
+    assert [first.status_code, second.status_code] == [202, 202]
+    assert final_product["stok"] == 0
+
+
+@pytest.mark.asyncio
 async def test_background_failure_marks_transaction_failed(
     tmp_path, monkeypatch
 ) -> None:
