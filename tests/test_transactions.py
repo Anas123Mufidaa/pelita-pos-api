@@ -145,8 +145,10 @@ async def test_background_failure_marks_transaction_failed(
     monkeypatch.setattr(transaction_routes.asyncio, "sleep", fail_sleep)
     await transaction_routes.process_transaction(row["id"], database_path)
     failed = await fetch_transaction(row["id"], database_path=database_path)
+    product = await fetch_product(1, database_path=database_path)
 
     assert failed["status"] == "failed"
+    assert product["stok"] == 50
 
 
 @pytest.mark.asyncio
