@@ -18,6 +18,7 @@ from fastapi import Path as PathParameter
 from database import (
     InsufficientStockError,
     ProductNotFoundError,
+    fail_transaction_and_restore_stock,
     fetch_transaction,
     fetch_transactions,
     get_database_path,
@@ -39,6 +40,7 @@ from responses import build_response_meta
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/transactions", tags=["Cashier"])
+# This lock is process-local; BEGIN IMMEDIATE remains the cross-worker safeguard.
 stock_lock = asyncio.Lock()
 PROCESSING_DELAY_SECONDS = 3
 
@@ -53,6 +55,7 @@ async def process_transaction(
             TransactionStatus.PROCESSING,
             database_path=database_path,
         )
+        # Simulate an asynchronous payment step without blocking the event loop.
         await asyncio.sleep(PROCESSING_DELAY_SECONDS)
         await update_transaction_status(
             transaction_id,
@@ -64,10 +67,8 @@ async def process_transaction(
             "Background transaction failed", extra={"transaction_id": transaction_id}
         )
         try:
-            await update_transaction_status(
-                transaction_id,
-                TransactionStatus.FAILED,
-                database_path=database_path,
+            await fail_transaction_and_restore_stock(
+                transaction_id, database_path=database_path
             )
         except Exception:
             logger.exception("Could not mark transaction as failed")
@@ -94,11 +95,13 @@ async def create_transaction(
     database_path: Annotated[Path, Depends(get_database_path)],
 ) -> SuccessResponse[TransactionRead]:
     try:
+        # The environment flag selects the intentionally unsafe path used by test_race.py.
         if os.getenv("PELITA_UNSAFE_STOCK") == "1":
             row = await reserve_transaction_unsafe(
                 transaction, database_path=database_path
             )
         else:
+            # Serialize stock reservations inside this process before the database write.
             async with stock_lock:
                 row = await reserve_transaction(
                     transaction, database_path=database_path
@@ -117,6 +120,7 @@ async def create_transaction(
         ) from exception
 
     created = TransactionRead(**dict(row))
+    # Respond with pending first; BackgroundTasks continues the three-second lifecycle.
     background_tasks.add_task(process_transaction, created.id, database_path)
     response.headers["Location"] = f"/transactions/{created.id}"
     return SuccessResponse(

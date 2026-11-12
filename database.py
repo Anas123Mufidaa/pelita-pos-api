@@ -232,6 +232,7 @@ async def reserve_transaction(
 ) -> aiosqlite.Row:
     async with connect_database(database_path) as connection:
         try:
+            # Lock before read/update so separate Uvicorn workers cannot oversell.
             await connection.execute("BEGIN IMMEDIATE")
             cursor = await connection.execute(
                 "SELECT harga FROM products WHERE id = ?",
@@ -279,6 +280,7 @@ async def reserve_transaction_unsafe(
             raise ProductNotFoundError
 
         current_stock = product["stok"]
+        # Widen the read-modify-write window to reproduce the unsafe race on demand.
         await asyncio.sleep(0.01)
         if current_stock < transaction.quantity:
             raise InsufficientStockError
@@ -304,6 +306,42 @@ async def update_transaction_status(
             (transaction_status.value, transaction_id),
         )
         await connection.commit()
+
+
+async def fail_transaction_and_restore_stock(
+    transaction_id: int,
+    *,
+    database_path: str | Path = DATABASE_PATH,
+) -> None:
+    async with connect_database(database_path) as connection:
+        try:
+            await connection.execute("BEGIN IMMEDIATE")
+            cursor = await connection.execute(
+                """
+                SELECT product_id, quantity, status
+                FROM transactions WHERE id = ?
+                """,
+                (transaction_id,),
+            )
+            transaction = await cursor.fetchone()
+            if transaction is None or transaction["status"] not in (
+                TransactionStatus.PENDING.value,
+                TransactionStatus.PROCESSING.value,
+            ):
+                await connection.rollback()
+                return
+            await connection.execute(
+                "UPDATE products SET stok = stok + ? WHERE id = ?",
+                (transaction["quantity"], transaction["product_id"]),
+            )
+            await connection.execute(
+                "UPDATE transactions SET status = ? WHERE id = ?",
+                (TransactionStatus.FAILED.value, transaction_id),
+            )
+            await connection.commit()
+        except Exception:
+            await connection.rollback()
+            raise
 
 
 async def fetch_transaction(
