@@ -17,26 +17,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-tags_metadata = [
-    {
-        "name": "System",
-        "description": "Pemeriksaan status Pelita POS API.",
-    },
-    {
-        "name": "Dashboard",
-        "description": "Pengelolaan produk dan pemantauan transaksi.",
-    },
-    {
-        "name": "Cashier",
-        "description": "Operasi transaksi aplikasi kasir.",
-    },
-]
-
 app = FastAPI(
     title="Pelita POS API",
-    description="Backend POS untuk Cashier App dan Dashboard",
+    description="Backend POS asynchronous dengan FastAPI dan aiosqlite",
     version="0.1.0",
-    openapi_tags=tags_metadata,
     lifespan=lifespan,
 )
 configure_error_handling(app)
