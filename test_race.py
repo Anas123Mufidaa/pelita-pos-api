@@ -13,6 +13,7 @@ async def run_race(base_url: str, mode: str) -> None:
         reset.raise_for_status()
 
         payload = {"product_id": 1, "quantity": 1, "cashier_name": "Race Test"}
+        # Start both requests together to expose the last-stock race window.
         first, second = await asyncio.gather(
             client.post("/transactions", json=payload),
             client.post("/transactions", json=payload),
