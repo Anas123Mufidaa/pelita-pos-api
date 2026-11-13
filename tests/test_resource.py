@@ -4,8 +4,9 @@ from contextlib import asynccontextmanager
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from database import get_database_path
+from database import get_database_path, reserve_transaction
 from main import app
+from models import TransactionCreate
 from seed import seed_products
 
 
@@ -164,3 +165,24 @@ async def test_delete_product_hard_deletes_product(tmp_path) -> None:
     assert deleted.json()["data"]["id"] == 1
     assert after_delete.status_code == 404
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_product_with_transaction_returns_conflict(tmp_path) -> None:
+    database_path = tmp_path / "test.db"
+    await seed_products(database_path)
+    await reserve_transaction(
+        TransactionCreate(product_id=1, quantity=1, cashier_name="Kasir"),
+        database_path=database_path,
+    )
+    app.dependency_overrides[get_database_path] = lambda: database_path
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.delete("/resource/1")
+    finally:
+        app.dependency_overrides.pop(get_database_path, None)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PRODUCT_IN_USE"
