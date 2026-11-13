@@ -210,6 +210,10 @@ async def update_product(
             "model": ErrorResponse,
             "description": "Product not found",
         },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponse,
+            "description": "Product is referenced by a transaction",
+        },
         **COMMON_ERROR_RESPONSES,
     },
     summary="Delete a product permanently",
@@ -219,7 +223,14 @@ async def delete_product(
     database_path: Annotated[Path, Depends(get_database_path)],
     product_id: Annotated[int, PathParameter(gt=0)],
 ) -> SuccessResponse[ProductRead]:
-    row = await delete_product_record(product_id, database_path=database_path)
+    try:
+        row = await delete_product_record(product_id, database_path=database_path)
+    except sqlite3.IntegrityError as exception:
+        raise AppException(
+            status_code=status.HTTP_409_CONFLICT,
+            code=ErrorCode.PRODUCT_IN_USE,
+            message="Product cannot be deleted because it has transaction history",
+        ) from exception
     if row is None:
         raise AppException(
             status_code=status.HTTP_404_NOT_FOUND,
