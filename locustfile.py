@@ -27,3 +27,17 @@ class ReadUser(HttpUser):
         if not claim_request():
             raise StopUser
         self.client.get("/resource?skip=0&limit=10", name="GET /resource")
+
+
+class TransactionUser(HttpUser):
+    wait_time = between(0.01, 0.05)
+
+    @task
+    def create_transaction(self) -> None:
+        if not claim_request():
+            raise StopUser
+        self.client.post(
+            "/transactions",
+            json={"product_id": 1, "quantity": 1, "cashier_name": "Locust"},
+            name="POST /transactions",
+        )
