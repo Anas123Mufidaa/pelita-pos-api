@@ -91,6 +91,19 @@ locust -f locustfile.py TransactionUser --headless -u 10 -r 10 `
 
 CSV final berada di `docs/benchmark/`.
 
+### Hasil benchmark
+
+| Skenario | Worker | Request | Failure | Avg (ms) | P95 (ms) | Request/s | Total Waktu (s) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `GET /resource` | 1 | 100 | 0 | 55.89 | 120 | 216.78 | 0.46 |
+| `GET /resource` | 4 | 100 | 0 | 39.27 | 130 | 277.44 | 0.36 |
+| `POST /transactions` | 1 | 50 | 0 | 144.31 | 190 | 50.09 | 1.00 |
+| `POST /transactions` | 4 | 50 | 0 | 137.59 | 530 | 53.52 | 0.93 |
+
+`Total Waktu` dihitung dari jumlah request dibagi request per detik. Seluruh
+skenario selesai tanpa kegagalan request. Empat worker meningkatkan throughput,
+tetapi P95 transaksi memburuk karena write SQLite tetap saling menunggu.
+
 ## Pengujian
 
 ```powershell

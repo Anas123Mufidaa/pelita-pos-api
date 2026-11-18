@@ -95,13 +95,13 @@ async def create_transaction(
     database_path: Annotated[Path, Depends(get_database_path)],
 ) -> SuccessResponse[TransactionRead]:
     try:
-        # The environment flag selects the intentionally unsafe path used by test_race.py.
+        # Select the intentionally unsafe path used by test_race.py.
         if os.getenv("PELITA_UNSAFE_STOCK") == "1":
             row = await reserve_transaction_unsafe(
                 transaction, database_path=database_path
             )
         else:
-            # Serialize stock reservations inside this process before the database write.
+            # Serialize stock reservations in this process before writing.
             async with stock_lock:
                 row = await reserve_transaction(
                     transaction, database_path=database_path
