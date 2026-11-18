@@ -8,3 +8,10 @@ htmlcov/
 
 docs/drafts/
 docs/presentation-notes.md
+
+# Keep repository documentation minimal; README and benchmark artifacts stay tracked.
+*.md
+*.http
+!README.md
+!docs/benchmark/
+!docs/benchmark/**
