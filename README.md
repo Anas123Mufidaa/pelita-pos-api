@@ -4,6 +4,41 @@ Backend berbasis FastAPI, Pydantic, `aiosqlite`, `BackgroundTasks`, dan
 `asyncio.Lock`. Scope penilaian difokuskan pada CRUD produk, transaksi
 asynchronous, eksperimen race condition, dan benchmark satu versus empat worker.
 
+## Arsitektur
+
+```mermaid
+flowchart TD
+    Client["Client / Swagger UI"] --> API["FastAPI"]
+    API --> Validation["Validasi Pydantic"]
+
+    Validation --> Resource["Resource routes<br/>CRUD produk"]
+    Validation --> Transaction["Transaction routes<br/>stok dan transaksi"]
+
+    Resource --> ProductDB["aiosqlite"]
+    ProductDB --> SQLite[(SQLite)]
+
+    Transaction --> Mode{"Mode reservasi stok"}
+    Mode -->|Safe| Lock["asyncio.Lock<br/>berlaku dalam satu proses"]
+    Lock --> Atomic["BEGIN IMMEDIATE<br/>conditional stock update"]
+    Mode -->|Unsafe / eksperimen| Unsafe["Read-modify-write<br/>race reproduction"]
+
+    Atomic --> TransactionDB["Transaksi aiosqlite"]
+    Unsafe --> TransactionDB
+    TransactionDB --> Commit["Commit stok, snapshot harga,<br/>dan transaksi pending"]
+    Commit --> SQLite
+    Commit --> Accepted["HTTP 202 Accepted"]
+
+    Accepted --> Background["BackgroundTasks"]
+    Background --> Processing["processing"]
+    Processing --> Completed["completed"]
+    Processing -->|exception| Failed["failed<br/>stok dikembalikan"]
+```
+
+`asyncio.Lock` mengatur reservasi stok di dalam satu proses, sedangkan transaksi
+SQLite dengan `BEGIN IMMEDIATE` dan conditional update menjaga konsistensi saat
+API dijalankan dengan beberapa worker. `BackgroundTasks` melanjutkan siklus
+transaksi setelah respons `202 Accepted` dikirim.
+
 ## Menjalankan aplikasi
 
 ```powershell
