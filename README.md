@@ -1,4 +1,14 @@
+[Video Presentasi Pelita POS API — YouTube Unlisted](https://youtu.be/qZXupo7JdTE)
+
 # Pelita POS API — Pemrograman Asynchronous
+
+| | |
+| --- | --- |
+| **Nama** | Anas Shohibunnuril Mufida |
+| **NIM** | 231220092 |
+| **Program Studi** | Teknik Informatika, Universitas Muhammadiyah Pontianak |
+| **Mata Kuliah** | Komputasi Paralel dan Terdistribusi (UTS) |
+| **Laporan** | [docs/laporan_uts.pdf](docs/laporan_uts.pdf) |
 
 Backend berbasis FastAPI, Pydantic, `aiosqlite`, `BackgroundTasks`, dan
 `asyncio.Lock`. Scope penilaian difokuskan pada CRUD produk, transaksi
